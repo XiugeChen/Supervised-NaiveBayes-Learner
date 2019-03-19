@@ -5,6 +5,7 @@
 # 2019.03.15
 
 import os
+import sys
 
 ##### SYSTEM SETTINGS #####
 
@@ -12,6 +13,8 @@ import os
 FOLDER_PATH = "./2019S1-proj1-data/"
 # file name that contains header information
 HEADER_FILE = "headers.txt"
+# epsilon smoothing value
+EPSILON = 1
 
 ##### END SYSTEM SETTINGS #####
 
@@ -26,14 +29,14 @@ def main():
         
         model = train(dataSet)
         
-        print(fileName, model)
+        predict(model, dataSet[:10])
     
     return
     
 #### END MAIN FUNCTION ####
     
 #### DATA PROCESSING ####
-# opens a data file, and converts it into a usable format dataset
+# opens a data file, and converts it into a usable format dataset with proper header at its first row
 # INPUT: fileName that contains data
 # OUTPUT: dataset, a list of instance, where instance is a 2-tuple 
 # (a list of attribute values, and a class label attribute)
@@ -85,8 +88,7 @@ def getFileNames(folderPath):
 #### TRAINING STAGE ####
 # calculate probabilities (prior, posteriors) from the training data, to build a Naive Bayes (NB) model
 # missing value handling: not contribute to the counts/probability estimates
-# Also add Laplace smoothing
-# INPUT: usable format dataSet with header as first row
+# INPUT: usable format dataSet with proper header as first row
 # OUTPUT: model, a 2-tuple contains a dictionary of normalised counts (probabilities) representing the class 
 # distribution P(c), and a dictionary (one per class) of dictionaries (one per attribute) of dictionaries (keys are attribute 
 # values, values are counts or probabilities) representing the conditional probabilities P(a|c);
@@ -120,23 +122,19 @@ def train(dataSet):
                 Pac[classTag][attributeName][attributeValue] = 1
                 
     # normalise counts to get posteriors probabilities of each values of each attributes of each classes
-    # eliminate missing value and add Laplace smoothing
+    # eliminate missing value 
     for singleClass in Pac.keys():
         for attribute in Pac[singleClass].keys():
             valueKeys = Pac[singleClass][attribute].keys()
-            numInstance = Pc[singleClass] + len(valueKeys) + 1
+            numInstance = Pc[singleClass]
             
             # if there is missing value, not contribute to the counts/probability estimates
             if '?' in valueKeys:
-                numInstance = numInstance - Pac[singleClass][attribute]['?'] - 1
+                numInstance = numInstance - Pac[singleClass][attribute]['?']
                 del Pac[singleClass][attribute]['?']
             
             for valueKey in valueKeys:
-                # Laplace smoothing
-                Pac[singleClass][attribute][valueKey] = (Pac[singleClass][attribute][valueKey] + 1) / numInstance
-            
-            # add posteriors probability of unknown/new values
-            Pac[singleClass][attribute]["unknow"] = 1 / numInstance
+                Pac[singleClass][attribute][valueKey] = Pac[singleClass][attribute][valueKey] / numInstance
     
     # normalise counts to get priors probabilities of each classes
     for singleClass in Pc.keys():
@@ -148,16 +146,35 @@ def train(dataSet):
 
 #### PREDICTING STAGE ####
 
-# predict classes distribution for the test dataset
-# INPUT: the Naive Bayes model, usable format dataSet with header at first row
+# predict classes distribution for the test dataset, for new values using epsilon smoothing method
+# INPUT: the Naive Bayes model, usable format dataSet with proper header at first row
 # OUTPUT: a list of class labels
-def predict(model, dataset):
-    dataHeader = dataSet[0][0]
+def predict(model, dataSet):
+    dataHeader, predictClass = dataSet[0][0], []
+    Pc, Pac = model
 
-    for instance in dataset[1:]:
-        continue
-    
-    return
+    for instance in dataSet[1:]:
+        maxClass, maxProb = "", 0
+        attributes = instance[0]
+        
+        for singleClass in Pac.keys():
+            # calculate probabilities for each class, replace 0 with epsilon
+            prob = Pc[singleClass]
+            
+            for i in range(0, len(attributes)):
+                attributeName, attributeValue = dataHeader[i], attributes[i]
+                
+                if attributeValue in Pac[singleClass][attributeName].keys():
+                    prob *= Pac[singleClass][attributeName][attributeValue]
+                else:
+                    prob *= EPSILON
+            
+            if prob > maxProb:
+                maxClass, maxProb = singleClass, prob
+
+        predictClass.append(maxClass)
+        
+    return predictClass
     
 #### END PREDICTING STAGE ####
 
