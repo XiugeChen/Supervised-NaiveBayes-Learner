@@ -35,3 +35,7 @@ parents,has_nurs,form,children,housing,finance,social,health,class
 primary-tumor.csv
 =================
 age,sex,histologic-type,degree-of-diffe,bone,bone-marrow,lung,pleura,peritoneum,liver,brain,skin,neck,supraclavicular,axillar,mediastinum,abdominal,class
+
+test.csv
+=================
+outlook,temperature,humidity,windy,play
