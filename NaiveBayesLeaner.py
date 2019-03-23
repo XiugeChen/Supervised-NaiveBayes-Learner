@@ -289,9 +289,9 @@ def main():
         
         evaluate(model, testSet)
         
-        info_gain(model)
+        iglist = info_gain(model)
         
-        print(info_gain)
+        print(iglist)
     
     return
     
