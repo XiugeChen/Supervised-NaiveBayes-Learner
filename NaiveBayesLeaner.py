@@ -147,19 +147,21 @@ def predict(model, dataSet):
         
         for singleClass in pac.keys():
             # calculate probabilities for each class, replace 0 with epsilon
-            prob = math.log(pc[singleClass])
+            prob = math.log(pc[singleClass], 2)
             
             for i in range(0, len(attributes)):
                 attributeName, attributeValue = dataHeader[i], attributes[i]
                 
                 if attributeValue in pac[singleClass][attributeName].keys():
-                    prob += math.log(pac[singleClass][attributeName][attributeValue])
+                    prob += math.log(pac[singleClass][attributeName][attributeValue], 2)
+                elif attributeValue == '?':
+                    prob += 0
                 else:
-                    prob += math.log(EPSILON)
+                    prob += math.log(EPSILON, 2)
             
             if prob > maxProb:
                 maxClass, maxProb = singleClass, prob
-
+        
         predictClass.append(maxClass)
         
     return predictClass
