@@ -71,13 +71,22 @@ def getFileNames(folderPath):
 # INPUT: dataset
 # OUTPUT: list of training dataset, list of testing dataset
 def partition_testOnTrain(dataSet):   
-    return dataSet.copy(), dataSet.copy()
+    return [dataSet.copy()], [dataSet.copy()], 1
+    
+def partition_crossValid(dataSet, numPartrition):
+    trains, tests, dataHeader, dataLen = [], [], dataSet[0], len(dataSet[1:])
+    
+    for i in range(0, numPartrition):
+        trains += []
+        test += []
+    
+    return trains, tests, numPartrition
     
 #### END DATA PROCESSING ####
 
 #### TRAINING STAGE ####
 # calculate probabilities (prior, posteriors) from the training data, to build a Naive Bayes (NB) model
-# missing value handling: not contribute to the counts/probability estimates
+# missing value handling: not contribute to the counts/probability estimates, ignore the missing value by subtract 1 from everywhere it counts before, not delete the whole row!!!
 # INPUT: usable format dataSet with proper header as first row
 # OUTPUT: model, a 2-tuple contains a dictionary of normalised counts (probabilities) representing the class 
 # distribution P(c), and a dictionary (one per class) of dictionaries (one per attribute) of dictionaries (keys are attribute 
@@ -116,10 +125,9 @@ def train(dataSet):
             valueKeys = pac[singleClass][attribute].keys()
             numInstance = pc[singleClass]
             
-            # if there is missing value, not contribute to the counts/probability estimates
+            # if there is missing value, not contribute to the counts/probability estimates, however we still maintain ? in model just for calculating entropy
             if '?' in valueKeys:
                 numInstance = numInstance - pac[singleClass][attribute]['?']
-                del pac[singleClass][attribute]['?']
             
             for valueKey in valueKeys:
                 pac[singleClass][attribute][valueKey] = pac[singleClass][attribute][valueKey] / numInstance
@@ -152,12 +160,14 @@ def predict(model, dataSet):
             for i in range(0, len(attributes)):
                 attributeName, attributeValue = dataHeader[i], attributes[i]
                 
-                if attributeValue in pac[singleClass][attributeName].keys():
-                    prob += math.log(pac[singleClass][attributeName][attributeValue], 2)
-                elif attributeValue == '?':
+                if attributeValue == '?':
                     prob += 0
+                elif attributeValue in pac[singleClass][attributeName].keys():
+                    prob += math.log(pac[singleClass][attributeName][attributeValue], 2)
                 else:
                     prob += math.log(EPSILON, 2)
+                    
+            #print(singleClass, prob)
             
             if prob > maxProb:
                 maxClass, maxProb = singleClass, prob
@@ -219,12 +229,14 @@ def evaluate(model, testSet):
     return
 
 # calculate the Information Gain (IG) for one (or each) attribute, relative to the class distribution
+# if there is a missing value, ignore the missing value by subtract 1 from everywhere it counts before, but not delete the whole row!!!
 # INPUT: A trained model
 # OUTPUT: a dictionary maps each attribute to its values of Information Gain
 def info_gain(model):
     pc, pac = model
     ig, attributes_values, output = 0, {}, {}
     
+    # preparing, get useful data
     # get entire attributes and value mapping list
     attributes = []
     for eachclass in pac:
@@ -233,35 +245,59 @@ def info_gain(model):
     attributes = list(set(attributes))
     
     for attribute in attributes:
-        values = []
-        
+        values = []        
         for eachclass in pac:
             values.extend(pac[eachclass][attribute].keys())
         
         values = list(set(values))
         attributes_values[attribute] = values
-
-    # entropy for root, the entropy before splitting the tree using the attribute’s values
-    for eachclass in pc.keys():
-        ig -= pc[eachclass] * math.log(pc[eachclass], 2)
     
+    # info_gain calculation
     for attribute in attributes_values.keys():
-        meanInfo = 0
+        meanInfo, pc_copy, ig = 0, pc.copy(), 0
+        
+        # re-calculate the probabilities distribution of each class and entropy of the root when missing value '?' presents
+        # subtract the ? from everywhere it counts to reduce its influence
+        if '?' in attributes_values[attribute]:
+            # get the probability of missing value appeared in all instances
+            missValueProb, class_prob = 0, {}
+            for eachclass in pc_copy.keys():
+                classProb = 0
+                for value in pac[eachclass][attribute].keys():
+                    classProb += pac[eachclass][attribute][value]
+                
+                class_prob[eachclass] = classProb
+                missValueProb += pc_copy[eachclass] - pc_copy[eachclass] / classProb
+                    
+            # re-calculate the probabilities distribution of each class and entropy of the root
+            for eachclass in pc_copy.keys():
+                pc_copy[eachclass] = pc_copy[eachclass] / class_prob[eachclass] / (1 - missValueProb)
+                
+                ig -= pc_copy[eachclass] * math.log(pc_copy[eachclass], 2)
+        
+        else:
+            # entropy of the root with no missing value, the entropy before splitting the tree using the attribute’s values
+            for eachclass in pc.keys():
+                ig -= pc[eachclass] * math.log(pc[eachclass], 2)
+        
         # the weighted average of the entropy over the children after the split (Mean Information)
         # Mean Information (attribute a) = sum_v( P(value v) * H(value v) )
         for value in attributes_values[attribute]:
+            if value == '?':
+                continue
+        
+            prob_av, h_av = 0, 0
+            
             # P(a=v), prob_av
-            prob_av = 0
             for eachclass in pac.keys():
                 if attribute in pac[eachclass].keys() and value in pac[eachclass][attribute].keys():
-                    prob_av += pac[eachclass][attribute][value] * pc[eachclass]
+                    prob_av += pac[eachclass][attribute][value] * pc_copy[eachclass]
         
             # H(a=v) =  - sum_c( P(class c | a=v) * log(P(c | a=v)) ), h_av
             # P(c | a=v) = (P(a=v | c) * P(c)) / P(a=v), prob_c_av
-            h_av = 0
             for eachclass in pac.keys():
                 if attribute in pac[eachclass].keys() and value in pac[eachclass][attribute].keys():
-                    prob_c_av = (pac[eachclass][attribute][value] * pc[eachclass]) / prob_av
+                    prob_c_av = (pac[eachclass][attribute][value] * pc_copy[eachclass]) / prob_av
                     h_av -= prob_c_av * math.log(prob_c_av, 2)          
                 
             meanInfo += prob_av * h_av
@@ -283,17 +319,18 @@ def main():
     
         dataSet = preprocess(fileName)
         
-        trainSet, testSet = partition_testOnTrain(dataSet)
+        trainSets, testSets, num = partition_testOnTrain(dataSet)
         
-        model = train(trainSet)
+        for i in range(0, num):
+            model = train(trainSets[i])
         
-        result = predict(model, testSet)
+            result = predict(model, testSets[i])
         
-        evaluate(model, testSet)
+            evaluate(model, testSets[i])
         
-        iglist = info_gain(model)
+            iglist = info_gain(model)
         
-        print(iglist)
+            print(iglist)
     
     return
     
