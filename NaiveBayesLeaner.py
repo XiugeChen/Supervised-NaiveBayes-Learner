@@ -7,6 +7,7 @@
 import os
 import sys
 import math
+import numpy as np
 
 ##### SYSTEM SETTINGS #####
 
@@ -16,6 +17,8 @@ FOLDER_PATH = "./2019S1-proj1-data/"
 HEADER_FILE = "headers.txt"
 # epsilon smoothing value
 EPSILON = sys.float_info.epsilon
+# number of partition used in cross validation, 1 if testing on training data
+NUM_PARTITION = 1
 
 ##### END SYSTEM SETTINGS #####
     
@@ -68,19 +71,38 @@ def getFileNames(folderPath):
     return filePaths
 
 # partition given data set into training and testing data
-# INPUT: dataset
-# OUTPUT: list of training dataset, list of testing dataset
-def partition_testOnTrain(dataSet):   
-    return [dataSet.copy()], [dataSet.copy()], 1
+# INPUT: dataset, number of partition
+# OUTPUT: list of training dataset, list of testing dataset, the length of list
+def partition(dataSet, numPartition):
+    if numPartition == 1 or numPartition >= len(dataSet[1:]):
+        return [dataSet.copy()], [dataSet.copy()], 1
     
-def partition_crossValid(dataSet, numPartrition):
-    trains, tests, dataHeader, dataLen = [], [], dataSet[0], len(dataSet[1:])
+    data, dataHeader, dataLen = dataSet[1:].copy(), dataSet[0], len(dataSet[1:])
+    trains, tests, partitionLen, extraInstance = [], [], int(dataLen / numPartition), dataLen % numPartition
     
-    for i in range(0, numPartrition):
-        trains += []
-        test += []
+    np.random.shuffle(data)
     
-    return trains, tests, numPartrition
+    for i in range(0, numPartition):
+        # fill the extra instances that couldn't be divided equally into partition
+        if i < extraInstance:
+            testIndex = list((range(i * (partitionLen + 1), (i + 1) * (partitionLen + 1))))
+        else:
+            testIndex = list((range(i * partitionLen + extraInstance, (i + 1) * partitionLen + extraInstance)))
+            
+        trainIndex = list(set(range(0, dataLen)).difference(set(testIndex)))
+        
+        test, train = [dataHeader], [dataHeader]
+        
+        for j in testIndex:
+            test.append(data[j])
+            
+        for k in trainIndex:
+            train.append(data[k])
+        
+        tests.append(test)
+        trains.append(train)
+    
+    return trains, tests, numPartition
     
 #### END DATA PROCESSING ####
 
@@ -130,7 +152,10 @@ def train(dataSet):
                 numInstance = numInstance - pac[singleClass][attribute]['?']
             
             for valueKey in valueKeys:
-                pac[singleClass][attribute][valueKey] = pac[singleClass][attribute][valueKey] / numInstance
+                if numInstance == 0:
+                    pac[singleClass][attribute][valueKey] = 1
+                else:
+                    pac[singleClass][attribute][valueKey] = pac[singleClass][attribute][valueKey] / numInstance
     
     # normalise counts to get priors probabilities of each classes
     for singleClass in pc.keys():
@@ -166,8 +191,6 @@ def predict(model, dataSet):
                     prob += math.log(pac[singleClass][attributeName][attributeValue], 2)
                 else:
                     prob += math.log(EPSILON, 2)
-                    
-            #print(singleClass, prob)
             
             if prob > maxProb:
                 maxClass, maxProb = singleClass, prob
@@ -188,13 +211,15 @@ def predict(model, dataSet):
 # A 2 1
 # B 0 3
 # meaning: 2 instances of class A are correctly identified as A, 1 is mistakenly identified as B, all 3 instances of B are correctly identified as B, none of them is mistakenly identified as A
-def evaluate(model, testSet):
+def evaluate(models, testSets, num):
     # get correct label array
-    correctLabels = []
-    for instance in testSet[1:]:
-        correctLabels.append(instance[1])
+    correctLabels, resultLabels = [], []
+    for i in range(0, num):
+        for instance in testSets[i][1:]:
+            correctLabels.append(instance[1])
     
-    resultLabels = predict(model, testSet)
+    for i in range(0, num):
+        resultLabels.extend(predict(models[i], testSets[i]))
     
     # get result 2d map, primary key is each primary class, secondary key and value are the number of other class primary class has been identified into
     # ex. {'A': {'A': 2, 'B': 1}} means for total 3 test instances of A, 2 of them are correctly identified as A itself, 1 is mistakenly identified as B
@@ -319,17 +344,16 @@ def main():
     
         dataSet = preprocess(fileName)
         
-        trainSets, testSets, num = partition_testOnTrain(dataSet)
+        trainSets, testSets, num = partition(dataSet, NUM_PARTITION)
+        
+        models = []
+        for i in range(0, num):
+            models.append(train(trainSets[i]))
+        
+        evaluate(models, testSets, num)
         
         for i in range(0, num):
-            model = train(trainSets[i])
-        
-            result = predict(model, testSets[i])
-        
-            evaluate(model, testSets[i])
-        
-            iglist = info_gain(model)
-        
+            iglist = info_gain(models[i])
             print(iglist)
     
     return
