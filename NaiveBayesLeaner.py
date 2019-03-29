@@ -58,7 +58,9 @@ def getHeader(fileName):
     
     return headerArray
 
-# given a folder that contains
+# given a folder that contains all files, get all csv file names
+# INPUT: folder path
+# OUTPUT: csv file names
 def getFileNames(folderPath):
     filePaths = []
     
@@ -70,8 +72,8 @@ def getFileNames(folderPath):
     
     return filePaths
 
-# partition given data set into training and testing data
-# INPUT: dataset, number of partition
+# partition given data set into training and testing data based on cross validation
+# INPUT: dataset, number of partition (1 if test on training data)
 # OUTPUT: list of training dataset, list of testing dataset, the length of list
 def partition(dataSet, numPartition):
     if numPartition == 1 or numPartition >= len(dataSet[1:]):
@@ -108,7 +110,7 @@ def partition(dataSet, numPartition):
 
 #### TRAINING STAGE ####
 # calculate probabilities (prior, posteriors) from the training data, to build a Naive Bayes (NB) model
-# missing value handling: not contribute to the counts/probability estimates, ignore the missing value by subtract 1 from everywhere it counts before, not delete the whole row!!!
+# missing value handling: not contribute to the counts/probability estimates, exclude a missing value by subtract 1 from everywhere it counts before, not delete the whole row!!!
 # INPUT: usable format dataSet with proper header as first row
 # OUTPUT: model, a 2-tuple contains a dictionary of normalised counts (probabilities) representing the class 
 # distribution P(c), and a dictionary (one per class) of dictionaries (one per attribute) of dictionaries (keys are attribute 
@@ -141,7 +143,7 @@ def train(dataSet):
                 pac[classTag][attributeName][attributeValue] = 1
                 
     # normalise counts to get posteriors probabilities of each values of each attributes of each classes
-    # eliminate missing value 
+    # eliminate missing value
     for singleClass in pac.keys():
         for attribute in pac[singleClass].keys():
             valueKeys = pac[singleClass][attribute].keys()
@@ -203,7 +205,7 @@ def predict(model, dataSet):
 
 #### EVALUATION STAGE ####
 
-# output evaluation metric(s) for single model and test data, or sufficient information so that they can be easily calculated by hand
+# output evaluation metric(s) for model and test data, or sufficient information so that they can be easily calculated by hand
 # INPUT: trained model, usable dataset with header for testing
 # OUTPUT: void, but prints the necessary evaluation metric information
 # print example:
@@ -211,15 +213,13 @@ def predict(model, dataSet):
 # A 2 1
 # B 0 3
 # meaning: 2 instances of class A are correctly identified as A, 1 is mistakenly identified as B, all 3 instances of B are correctly identified as B, none of them is mistakenly identified as A
-def evaluate(models, testSets, num):
+def evaluate(model, testSet, num):
     # get correct label array
     correctLabels, resultLabels = [], []
-    for i in range(0, num):
-        for instance in testSets[i][1:]:
-            correctLabels.append(instance[1])
+    for instance in testSet[1:]:
+        correctLabels.append(instance[1])
     
-    for i in range(0, num):
-        resultLabels.extend(predict(models[i], testSets[i]))
+    resultLabels = predict(model, testSet)
     
     # get result 2d map, primary key is each primary class, secondary key and value are the number of other class primary class has been identified into
     # ex. {'A': {'A': 2, 'B': 1}} means for total 3 test instances of A, 2 of them are correctly identified as A itself, 1 is mistakenly identified as B
@@ -237,7 +237,7 @@ def evaluate(models, testSets, num):
             metricMap[correctLabel][resultLabel] = 1
             
     # transform the result map to output matrix format and output results       
-    print("Class Idendification Matrix:")
+    print("\nClass Idendification Initial Number Matrix:")
     print("\t" + "".join(key + "\t" for key in metricMap.keys()))
     
     for priKey in metricMap.keys():
@@ -251,10 +251,63 @@ def evaluate(models, testSets, num):
                 
         print("".join(str(count) + "\t" for count in countList))
         
+    # transform the result map to precision, recall, f1-score by assume each class is the interested one separately
+    print("\nClass Idendification Advanced Data Matrix:")
+    print("\t" + "".join(key + "\t" for key in ["precision", "recall", "f1-score"]))
+    
+    # get TP, FP, FN for each class and print its precision, recall and f1 score
+    # calculate and output micro-averaging, macro-averaging, weighted-averaging
+    macroavg, weightedavg, microavg = ["macro avg", 0, 0], ["weighted avg", 0, 0], ["micro avg"]
+    tps, fps, fns, precisions, recalls = 0, 0, 0, 0, 0
+    for priKey in metricMap.keys():
+        tp, fp, fn, precision, recall, f1, countList = 0, 0, 0, 0, 0, 0, [priKey]
+        
+        for secKey in metricMap.keys():
+            if secKey in metricMap[priKey].keys():
+                if secKey == priKey:
+                    tp = metricMap[priKey][secKey]
+                else:
+                    fn += metricMap[priKey][secKey]
+            
+            if priKey in metricMap[secKey].keys() and priKey != secKey:
+                fp += metricMap[secKey][priKey]
+                     
+        if (tp + fp) > 0:
+            precision = tp / (tp + fp)
+        if (tp + fn) > 0:
+            recall = tp / (tp + fn)
+        if (precision + recall) > 0:
+            f1 = (2 * precision * recall) / (precision + recall)
+            
+        countList.extend([precision , recall, f1])
+        print("".join(str(count) + "\t" for count in countList))
+        
+        tps += tp
+        fps += fp
+        fns += fn
+        macroavg[1] += precision / len(metricMap.keys())
+        macroavg[2] += recall / len(metricMap.keys())
+        if priKey in model[0].keys():
+            weightedavg[1] += precision * model[0][priKey]
+            weightedavg[2] += recall * model[0][priKey]
+    
+    precisionu, recallu = tps / (tps + fps), tps / (tps + fns)
+    
+    macroavg.append((2 * macroavg[1] * macroavg[2]) / (macroavg[1] + macroavg[2]))
+    weightedavg.append((2 * weightedavg[1] * weightedavg[2]) / (weightedavg[1] + weightedavg[2]))
+    microavg.extend([precisionu, recallu, (2 * precisionu * recallu) / (precisionu + recallu)])    
+    print("".join(str(count) + "\t" for count in macroavg))
+    print("".join(str(count) + "\t" for count in weightedavg))
+    print("".join(str(count) + "\t" for count in microavg))
+        
     return
+    
+#### END EVALUATION ####
+
+#### INFORMATION GAIN ####
 
 # calculate the Information Gain (IG) for one (or each) attribute, relative to the class distribution
-# if there is a missing value, ignore the missing value by subtract 1 from everywhere it counts before, but not delete the whole row!!!
+# if there is a missing value, exclude a missing value by subtract 1 from everywhere it counts before, but not delete the whole row!!!
 # INPUT: A trained model
 # OUTPUT: a dictionary maps each attribute to its values of Information Gain
 def info_gain(model):
@@ -282,7 +335,7 @@ def info_gain(model):
         meanInfo, pc_copy, ig = 0, pc.copy(), 0
         
         # re-calculate the probabilities distribution of each class and entropy of the root when missing value '?' presents
-        # subtract the ? from everywhere it counts to reduce its influence
+        # subtract the ? from everywhere it counts to avoid wrong entropy
         if '?' in attributes_values[attribute]:
             # get the probability of missing value appeared in all instances
             missValueProb, class_prob = 0, {}
@@ -331,7 +384,7 @@ def info_gain(model):
 
     return output
     
-#### END EVALUATION STAGE ####
+#### END INFORMATION GAIN ####
 
 #### MAIN FUNCTION ####
 # main function that initialize and execute this program
@@ -340,21 +393,20 @@ def main():
     fileNames = getFileNames(FOLDER_PATH)
     
     for fileName in fileNames:
-        print("File: " + fileName)
+        print("\nFile: " + fileName)
     
         dataSet = preprocess(fileName)
         
         trainSets, testSets, num = partition(dataSet, NUM_PARTITION)
         
-        models = []
         for i in range(0, num):
-            models.append(train(trainSets[i]))
+            print("\nNo." + str(i + 1) + " model: ")
+            model = train(trainSets[i])
         
-        evaluate(models, testSets, num)
+            evaluate(model, testSets[i], num)
         
-        for i in range(0, num):
-            iglist = info_gain(models[i])
-            print(iglist)
+            iglist = info_gain(model)
+            print("\ninformation gain list: ", sorted(iglist.items() , reverse=True, key=lambda x: x[1]))
     
     return
     
