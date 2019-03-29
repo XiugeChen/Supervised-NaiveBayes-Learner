@@ -155,7 +155,7 @@ def train(dataSet):
             
             for valueKey in valueKeys:
                 if numInstance == 0:
-                    pac[singleClass][attribute][valueKey] = 1
+                    pac[singleClass][attribute][valueKey] = float("inf")
                 else:
                     pac[singleClass][attribute][valueKey] = pac[singleClass][attribute][valueKey] / numInstance
     
@@ -351,7 +351,9 @@ def info_gain(model):
             for eachclass in pc_copy.keys():
                 pc_copy[eachclass] = pc_copy[eachclass] / class_prob[eachclass] / (1 - missValueProb)
                 
-                ig -= pc_copy[eachclass] * math.log(pc_copy[eachclass], 2)
+                # when the refined probability of a class is 0 (all instances of this class has attribute = '?'), add nothing (0) to ig
+                if not pc_copy[eachclass] == 0:
+                    ig -= pc_copy[eachclass] * math.log(pc_copy[eachclass], 2)
         
         else:
             # entropy of the root with no missing value, the entropy before splitting the tree using the attribute’s values
@@ -402,6 +404,7 @@ def main():
         for i in range(0, num):
             print("\nNo." + str(i + 1) + " model: ")
             model = train(trainSets[i])
+            print(model)
         
             evaluate(model, testSets[i], num)
         
