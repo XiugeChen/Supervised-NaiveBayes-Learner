@@ -18,7 +18,7 @@ HEADER_FILE = "headers.txt"
 # epsilon smoothing value
 EPSILON = sys.float_info.epsilon
 # number of partition used in cross validation, 1 if testing on training data
-NUM_PARTITION = 1
+NUM_PARTITION = 10
 
 ##### END SYSTEM SETTINGS #####
     
@@ -262,6 +262,7 @@ def evaluate(model, testSet, num):
     for priKey in metricMap.keys():
         tp, fp, fn, precision, recall, f1, countList = 0, 0, 0, 0, 0, 0, [priKey]
         
+        # get tp, fp, fn for each class
         for secKey in metricMap.keys():
             if secKey in metricMap[priKey].keys():
                 if secKey == priKey:
@@ -271,7 +272,8 @@ def evaluate(model, testSet, num):
             
             if priKey in metricMap[secKey].keys() and priKey != secKey:
                 fp += metricMap[secKey][priKey]
-                     
+        
+        # calculate precision and recall, f1 for each class     
         if (tp + fp) > 0:
             precision = tp / (tp + fp)
         if (tp + fn) > 0:
@@ -291,11 +293,32 @@ def evaluate(model, testSet, num):
             weightedavg[1] += precision * model[0][priKey]
             weightedavg[2] += recall * model[0][priKey]
     
-    precisionu, recallu = tps / (tps + fps), tps / (tps + fns)
+    if not tps + fps == 0:
+        precisionu = tps / (tps + fps)
+    else:
+        precisionu = 0.0
+        
+    if not tps + fns == 0:
+        recallu = tps / (tps + fns)
+    else:
+        recallu = 0.0
     
-    macroavg.append((2 * macroavg[1] * macroavg[2]) / (macroavg[1] + macroavg[2]))
-    weightedavg.append((2 * weightedavg[1] * weightedavg[2]) / (weightedavg[1] + weightedavg[2]))
-    microavg.extend([precisionu, recallu, (2 * precisionu * recallu) / (precisionu + recallu)])    
+    # calculate f1 score for different average
+    if not macroavg[1] + macroavg[2] == 0:
+        macroavg.append((2 * macroavg[1] * macroavg[2]) / (macroavg[1] + macroavg[2]))
+    else:
+        macroavg.append(0.0)
+    
+    if not weightedavg[1] + weightedavg[2] == 0:
+        weightedavg.append((2 * weightedavg[1] * weightedavg[2]) / (weightedavg[1] + weightedavg[2]))
+    else: 
+        weightedavg.append(0.0)
+        
+    if not precisionu + recallu == 0:
+        microavg.extend([precisionu, recallu, (2 * precisionu * recallu) / (precisionu + recallu)])    
+    else:
+        microavg.extend([0.0, 0.0, 0.0])
+    
     print("".join(str(count) + "\t" for count in macroavg))
     print("".join(str(count) + "\t" for count in weightedavg))
     print("".join(str(count) + "\t" for count in microavg))
