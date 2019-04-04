@@ -18,7 +18,7 @@ HEADER_FILE = "headers.txt"
 # epsilon smoothing value
 EPSILON = sys.float_info.epsilon
 # number of partition used in cross validation, 1 if testing on training data
-NUM_PARTITION = 10
+NUM_PARTITION = 1
 
 ##### END SYSTEM SETTINGS #####
     
