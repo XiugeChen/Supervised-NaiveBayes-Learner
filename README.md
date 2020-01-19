@@ -1,6 +1,6 @@
 # Supervised Naive Bayes Learner Implementation
 
-* Project 1 of subject [COMP30027](https://handbook.unimelb.edu.au/subjects/comp30027) (Machine Learning) at the University of Melbourne
+* Project 1 of subject [COMP30027](https://handbook.unimelb.edu.au/subjects/comp30027) (Machine Learning) at the University of Melbourne, 2019 Sem1.
 
 * Implementation of Naive Bayes Learner, with epsilon smoothing. Also calculates information gain for analyzing.
 
